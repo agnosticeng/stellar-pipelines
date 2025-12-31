@@ -2,7 +2,7 @@
 
 create table buffer as range_{{.RANGE_START}}_{{.RANGE_END}}
 engine = MergeTree 
-order by {{.ORDER_BY}}
+order by (selling_asset_id, buying_asset_id, trade_type, operation_id, order)
 settings old_parts_lifetime=10
 
 {{end}}
@@ -30,15 +30,8 @@ select
     greatest(
         {{.LEFT.RANGE_END | default "0"}}, 
         {{.RIGHT.RANGE_END}}
-    ) as RANGE_END,
-    generateUUIDv7() || '.parquet' as OUTPUT_FILE
-
-{{end}}
-
-{{define "condition"}}
-
-select toUInt64(count(*)) >= {{.MAX_BUFFER_SIZE | default "1000"}} as value from buffer
-
+    ) as RANGE_END
+    
 {{end}}
 
 {{define "rename_buffer"}}

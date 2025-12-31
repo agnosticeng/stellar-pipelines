@@ -2,8 +2,10 @@
 
 create table buffer as range_{{.RANGE_START}}_{{.RANGE_END}}
 engine = MergeTree 
-order by {{.ORDER_BY}}
-settings old_parts_lifetime=10
+order by (ledger_sequence, transaction_id, operation_id, type)
+settings 
+    old_parts_lifetime=10,
+    allow_nullable_key=1
 
 {{end}}
 
@@ -30,15 +32,8 @@ select
     greatest(
         {{.LEFT.RANGE_END | default "0"}}, 
         {{.RIGHT.RANGE_END}}
-    ) as RANGE_END,
-    generateUUIDv7() || '.parquet' as OUTPUT_FILE
-
-{{end}}
-
-{{define "condition"}}
-
-select toUInt64(count(*)) >= {{.MAX_BUFFER_SIZE | default "1000"}} as value from buffer
-
+    ) as RANGE_END
+    
 {{end}}
 
 {{define "rename_buffer"}}

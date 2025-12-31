@@ -1,29 +1,30 @@
 {{define "source"}}
 
 with 
-    {{.MAX_BATCH_SIZE | default "10"}} as max_batch_size,
-    {{.MAX_BATCH_PER_RUN | default "100"}} as max_batch_per_run,
-    {{.RPC_ENDPOINT | default "'https://rpc.lightsail.network'"}} as rpc_endpoint,
+    {{ .MAX_BATCH_SIZE | default "128" }} as max_batch_size,
+    {{ .MAX_BATCH_PER_RUN | default "100000" }} as max_batch_per_run,
 
     (
-        select stellar_rpc(rpc_endpoint || '/#fail-on-error=true&fail-on-null=true', 'getHealth', 'null')
-    ) as health,
+        select iceberg_field_bound_values_static_table(
+            '{{ .ICEBERG_CHANGES_URL }}',
+            'ledger_sequence'
+        )
+    ) as res,
 
-    (health.value.latestLedger::UInt32 - 64) as end,
+    (select arrayMax(res.value[].upper::Array(Int64))) AS end,
 
-    coalesce(
+    firstNonDefault(
         {{.RANGE_END | toCH}} + 1,
-        {{.INIT_START | toCH}},
-        {{.DEFAULT_START | toCH}},
+        {{.DEFAULT_START | default "0" | toCH}}::UInt32,
         1
     ) as start
 
 select 
-    generate_series as RANGE_START,
+    greatest(start, generate_series) as RANGE_START,
     least(end, (generate_series + max_batch_size - 1)) as RANGE_END
 from generate_series(
-    start::UInt32,
-    end::UInt32,
+    (intDiv(start, max_batch_size) * max_batch_size)::UInt32,
+    (intDiv(end, max_batch_size) * max_batch_size)::UInt32,
     max_batch_size::UInt32
 )
 limit max_batch_per_run

@@ -32,9 +32,9 @@ Stages:
       Queries:
         - create_ledgers
         - create_txs
-        - drop_ledgers
         - create_range
         - check_txs#ignore-output=true
+        - drop_ledgers
         - drop_txs
 
   - Buffer:

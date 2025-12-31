@@ -1,67 +1,58 @@
 Engine:
   Local:
     Bundles:
-      - https://github.com/agnosticeng/icepq/releases/download/v0.1.3/icepq_clickhouse_udf_bundle_0.1.3_{{ .GO_TARGET | default "linux_amd64_v3" }}.tar.gz
-      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.2/ch-stellar_0.0.2_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
+      - https://github.com/agnosticeng/ch-iceberg/releases/download/v0.0.2/ch-iceberg_0.0.2_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
+      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.4/ch-stellar_0.0.4_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz 
     Logging:
       DiscardSources:
         - AwsAuthSTSAssumeRoleWebIdentityCredentialsProvider
     Settings:
       send_logs_level: warning
-      allow_experimental_dynamic_type: 1
-      allow_experimental_json_type: 1
-      enable_dynamic_type: 1
-      enable_json_type: 1
       enable_named_columns_in_function_tuple: 1
       schema_inference_make_columns_nullable: auto
       remote_filesystem_read_prefetch: 0
       input_format_parquet_use_native_reader: 1
-      output_format_parquet_string_as_string: 0
-      output_format_parquet_use_custom_encoder: 1
-      output_format_parquet_write_page_index: 1
-      output_format_parquet_write_bloom_filter: 1
-      output_format_parquet_parallel_encoding: 0
-      max_execution_time: 3600
-      min_os_cpu_wait_time_ratio_to_throw: 100
-      max_os_cpu_wait_time_ratio_to_throw: 200
-      s3_max_connections: 50
       output_format_arrow_string_as_string: 0
+      enable_unaligned_array_join: 1
+      max_execution_time: 3600
 
 Init:
   Queries:
-    - init_start#ignore-error-codes=8888 
+    - create_table
+    - init_start
 
 Source:
   Query: source
-  PollInterval: 30s
+  PollInterval: {{ .SOURCE_POLL_INTERVAL | default "30s" }}
 
 Stages:
   - Execute:
-      PoolSize: 1
+      PoolSize: {{ .FETCH_POOL_SIZE | default "4" }}
       Ordered: true
       Queries:
-        - fetch_range
+        - create_ledgers
+        - create_txs 
+        - drop_ledgers
+        - create_range 
+        - check_txs
+        - drop_txs
 
   - Buffer:
       Enter: create_buffer
       Leave: rename_buffer
-      Condition: condition
       Queries:
         - insert_into_buffer
         - drop_range
         - merge_vars
-      MaxDuration: 300s
+      MaxDuration: {{ .MAX_BUFFER_DURATION | default "300s" }}
+      MaxRows: {{ .MAX_BUFFER_ROWS | default "960000" }}
 
   - Execute: 
       PoolSize: 1
       Ordered: true
       Queries:
-        - write_parquet_file
-        - iceberg_commit
+        - append_to_table
         - drop_buffer
       ClickhouseSettings:
         max_threads: 1
         max_insert_threads: 1
-        max_block_size: 32768
-        min_insert_block_size_rows: 0
-        min_insert_block_size_bytes: 33554432

@@ -1,14 +1,19 @@
-{{define "write_parquet_file"}}
+{{define "append_to_table"}}
 
-insert into function s3('{{.ICEBERG_DESTINATION_TABLE_LOCATION}}/data/{{.OUTPUT_FILE}}')
-select * from buffer_{{.RANGE_START}}_{{.RANGE_END}}
-order by {{.ORDER_BY}}
-
-{{end}}
-
-{{define "iceberg_commit"}}
-
-select icepq_add(concat('s3:/', path('{{.ICEBERG_DESTINATION_TABLE_LOCATION}}')), ['{{.OUTPUT_FILE}}'])
+select 
+    result
+from executable(
+    'ch-iceberg table-function iceberg-append-static-table --table-location={{ .ICEBERG_URL }}',
+    ArrowStream, 
+    'result String',
+    (
+        select * from buffer_{{.RANGE_START}}_{{.RANGE_END}}
+    ),
+    settings 
+        stderr_reaction='log', 
+        check_exit_code=true,
+        command_read_timeout=100000
+)
 
 {{end}}
 

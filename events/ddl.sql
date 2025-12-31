@@ -1,0 +1,54 @@
+{{define "create_table"}}
+
+with 
+    (
+        select iceberg_create_static_table(
+            '{{ .ICEBERG_URL }}',
+            $JSON$
+            {
+                "name": "",
+                "schema": {
+                    "schema-id": 0,
+                    "type": "struct",
+                    "fields": [
+                        {"id": 1    , "name": "ledger_sequence"                             , "type": "int"         , "required": true},
+                        {"id": 2    , "name": "ledger_close_time"                           , "type": "timestamp"   , "required": true},
+                        {"id": 3    , "name": "ledger_hash"                                 , "type": "binary"      , "required": true},
+                        {"id": 4    , "name": "transaction_hash"                            , "type": "binary"      , "required": true},
+                        {"id": 5    , "name": "transaction_id"                              , "type": "long"        , "required": true},
+                        {"id": 6    , "name": "transaction_result_code"                     , "type": "string"      , "required": true},
+                        {"id": 7    , "name": "transaction_successful"                      , "type": "int"         , "required": true},
+                        {"id": 8    , "name": "transaction_event_stage"                     , "type": "binary"      , "required": true},
+                        {"id": 9    , "name": "operation_id"                                , "type": "long"        , "required": true},
+                        {"id": 10   , "name": "operation_result_code"                       , "type": "binary"      , "required": true},
+                        {"id": 11   , "name": "operation_inner_result_code"                 , "type": "binary"      , "required": true},
+                        {"id": 12   , "name": "contract_id"                                 , "type": "binary"      , "required": true},
+                        {"id": 13   , "name": "type"                                        , "type": "binary"      , "required": true},
+                        {"id": 14   , "name": "topics"                                      , "type": {"type": "list", "element-id": 15, "element-required": true, "element": "binary"}, "required": true},
+                        {"id": 16   , "name": "data"                                        , "type": "binary"      , "required": true}
+                    ]
+                },
+
+                "partition-spec": {
+                    "spec-id": 0,
+                    "fields": [
+                        {"source-id": 2, "field-id": 1000, "name": "ledger_closed_time_year", "transform": "year"}
+                    ]
+                },
+                "write-order": {
+                    "order-id": 0,
+                    "fields": [
+                        {"source-id": 12 , "transform": "identity", "direction": "asc", "null-order": "nulls-first"},
+                        {"source-id": 5  , "transform": "identity", "direction": "asc", "null-order": "nulls-first"},
+                        {"source-id": 9  , "transform": "identity", "direction": "asc", "null-order": "nulls-first"}
+                    ]
+                }
+            }
+            $JSON$
+        )
+    ) as res
+
+select
+    throwIf(empty(res.error::String) = 0 and startsWithCaseInsensitive(res.error::String, 'Table already exists') = 0) as _1
+
+{{end}}
