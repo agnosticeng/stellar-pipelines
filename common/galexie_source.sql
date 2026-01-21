@@ -1,21 +1,16 @@
-{{define "source"}}
+{{define "galexie_source"}}
 
 with 
-    {{ .MAX_BATCH_SIZE | default "128" }} as max_batch_size,
+    {{ .LEDGERS_PER_FILE | default "64" }} as ledgers_per_file,
+    {{ .FILES_PER_BATCH | default "1" }} as files_per_batch,
     {{ .MAX_BATCH_PER_RUN | default "100000" }} as max_batch_per_run,
-
-    (
-        select iceberg_field_bound_values_static_table(
-            '{{ .ICEBERG_CHANGES_URL }}',
-            'ledger_sequence'
-        )
-    ) as res,
-
-    (select arrayMax(res.value[].upper::Array(Int64))) AS end,
+    ledgers_per_file * files_per_batch as max_batch_size,
+    
+    (select stellar_galexie_tip('{{ .GALEXIE_URL }}')) as end,
 
     firstNonDefault(
         {{.RANGE_END | toCH}} + 1,
-        {{.DEFAULT_START | default "0" | toCH}}::UInt32,
+        {{.DEFAULT_START | toCH}}::UInt32,
         1
     ) as start
 

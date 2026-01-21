@@ -1,13 +1,14 @@
-{{define "source"}}
+{{define "iceberg_table_source"}}
 
 with 
     {{ .MAX_BATCH_SIZE | default "128" }} as max_batch_size,
     {{ .MAX_BATCH_PER_RUN | default "100000" }} as max_batch_per_run,
 
     (
-        select iceberg_field_bound_values_static_table(
-            '{{ .ICEBERG_CHANGES_URL }}',
-            'ledger_sequence'
+        select iceberg_field_bound_values(
+            '{{ .ICEBERG_CATALOG_PROPERTIES }}', 
+            '{{ .ICEBERG_SOURCE_TABLE }}',
+            '{{ .ICEBERG_SOURCE_TABLE_MARKER_FIELD }}'
         )
     ) as res,
 

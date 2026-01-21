@@ -1,8 +1,8 @@
 Engine:
   Local:
     Bundles:
-      - https://github.com/agnosticeng/ch-iceberg/releases/download/v0.0.2/ch-iceberg_0.0.2_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
-      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.4/ch-stellar_0.0.4_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz 
+      - https://github.com/agnosticeng/ch-iceberg/releases/download/v0.0.5/ch-iceberg_0.0.5_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
+      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.6/ch-stellar_0.0.6_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz 
     Logging:
       DiscardSources:
         - AwsAuthSTSAssumeRoleWebIdentityCredentialsProvider
@@ -13,16 +13,22 @@ Engine:
       remote_filesystem_read_prefetch: 0
       input_format_parquet_use_native_reader: 1
       output_format_arrow_string_as_string: 0
-      enable_unaligned_array_join: 1
       max_execution_time: 3600
+
+Includes:
+  - ../common
+  
+DefaultVars:
+  ICEBERG_SINK_TABLE_MARKER_FIELD: ledger_sequence
+  ICEBERG_SINK_TABLE_ORDER_BY: selling_asset_id,buying_asset_id,trade_type,operation_id,order
 
 Init:
   Queries:
-    - create_table
-    - init_start
+    - create_table#ignore-failure=true
+    - init_from_table
 
 Source:
-  Query: source
+  Query: galexie_source
   PollInterval: {{ .SOURCE_POLL_INTERVAL | default "30s" }}
 
 Stages:
@@ -38,12 +44,12 @@ Stages:
         - drop_txs
 
   - Buffer:
-      Enter: create_buffer
+      Enter: create_buffer_from_range
       Leave: rename_buffer
       Queries:
-        - insert_into_buffer
+        - insert_range_into_buffer
         - drop_range
-        - merge_vars
+        - merge_range_and_buffer_vars
       MaxDuration: {{ .MAX_BUFFER_DURATION | default "300s" }}
       MaxRows: {{ .MAX_BUFFER_ROWS | default "960000" }}
 
@@ -51,7 +57,7 @@ Stages:
       PoolSize: 1
       Ordered: true
       Queries:
-        - append_to_table
+        - append_buffer_to_table
         - drop_buffer
       ClickhouseSettings:
         max_threads: 1

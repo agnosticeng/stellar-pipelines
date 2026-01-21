@@ -78,6 +78,3 @@ as (
 )
 
 {{end}}
-
-
-https://stellar-iceberg-testnet.agnostic.tech/changes'
