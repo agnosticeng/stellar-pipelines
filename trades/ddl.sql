@@ -2,7 +2,7 @@
 
 select iceberg_create_table(
     '{{ .ICEBERG_CATALOG_PROPERTIES }}', 
-    '{{ .ICEBERG_TABLE }}',
+    '{{ .ICEBERG_SINK_TABLE }}',
     $JSON$
     {
         "name": "",
