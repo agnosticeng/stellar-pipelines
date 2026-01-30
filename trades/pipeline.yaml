@@ -2,7 +2,7 @@ Engine:
   Local:
     Bundles:
       - https://github.com/agnosticeng/ch-iceberg/releases/download/v0.0.5/ch-iceberg_0.0.5_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
-      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.6/ch-stellar_0.0.6_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz 
+      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.7/ch-stellar_0.0.7_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
     Logging:
       DiscardSources:
         - AwsAuthSTSAssumeRoleWebIdentityCredentialsProvider
@@ -17,7 +17,7 @@ Engine:
 
 Includes:
   - ../common
-  
+
 DefaultVars:
   ICEBERG_SINK_TABLE_MARKER_FIELD: ledger_sequence
   ICEBERG_SINK_TABLE_ORDER_BY: selling_asset_id,buying_asset_id,trade_type,operation_id,order
@@ -29,19 +29,14 @@ Init:
 
 Source:
   Query: galexie_source
-  PollInterval: {{ .SOURCE_POLL_INTERVAL | default "30s" }}
+  PollInterval: { { .SOURCE_POLL_INTERVAL | default "30s" } }
 
 Stages:
   - Execute:
-      PoolSize: {{ .FETCH_POOL_SIZE | default "4" }}
+      PoolSize: { { .FETCH_POOL_SIZE | default "4" } }
       Ordered: true
       Queries:
-        - create_ledgers
-        - create_txs 
-        - drop_ledgers
-        - create_range 
-        - check_txs
-        - drop_txs
+        - create_range
 
   - Buffer:
       Enter: create_buffer_from_range
@@ -50,10 +45,10 @@ Stages:
         - insert_range_into_buffer
         - drop_range
         - merge_range_and_buffer_vars
-      MaxDuration: {{ .MAX_BUFFER_DURATION | default "300s" }}
-      MaxRows: {{ .MAX_BUFFER_ROWS | default "960000" }}
+      MaxDuration: { { .MAX_BUFFER_DURATION | default "300s" } }
+      MaxRows: { { .MAX_BUFFER_ROWS | default "960000" } }
 
-  - Execute: 
+  - Execute:
       PoolSize: 1
       Ordered: true
       Queries:

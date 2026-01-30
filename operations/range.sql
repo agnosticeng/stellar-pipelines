@@ -1,84 +1,73 @@
-{{define "create_ledgers"}}
-
-create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
-    with 
-        galexie as (
-            select 
-                ledger_close_meta
-            from executable(
-                'ch-stellar table-function galexie',
-                ArrowStream,
-                'ledger_close_meta String',
-                (
-                    select
-                        '{{ .GALEXIE_URL }}' as url,
-                        {{.RANGE_START}}::UInt32 as start,
-                        {{.RANGE_END}}::UInt32 as end
-                ),
-                settings 
-                    stderr_reaction='log', 
-                    check_exit_code=true,
-                    command_read_timeout=120000
-            )
-        )
-        
-        select            
-            firstNonDefault(
-                JSONExtractString(ledger_close_meta, 'v0'),
-                JSONExtractString(ledger_close_meta, 'v1'),
-                JSONExtractString(ledger_close_meta, 'v2')
-            ) as _lcm_raw,
-
-            JSONExtract(_lcm_raw, ' Tuple(
-                ledger_header Tuple(
-                    hash String,
-                    header Tuple(
-                        ledger_seq Int32,
-                        scp_value Tuple(
-                            close_time DateTime64(6, \'UTC\')
-                        )
-                    )
-                ),
-                tx_set Tuple(
-                    txs Array(String),
-                    v1 Tuple(
-                        phases Array(Tuple(
-                            v0 Array(Tuple(
-                                txset_comp_txs_maybe_discounted_fee Tuple(
-                                    txs Array(String)
-                                )
-                            )),
-                            v1 Tuple(
-                                execution_stages Array(Array(Array(String)))
-                            )
-                        ))
-                    )
-                ),
-                tx_processing Array(String)
-            )') as _lcm,
-
-            _lcm.ledger_header.header.ledger_seq as ledger_sequence,
-            _lcm.ledger_header.header.scp_value.close_time as ledger_close_time,
-            _lcm.ledger_header.hash as ledger_hash,
-            
-            arrayConcat(
-                _lcm.tx_set.txs,
-                arrayFlatten(_lcm.tx_set.v1.phases.v0.txset_comp_txs_maybe_discounted_fee.txs),
-                arrayFlatten(_lcm.tx_set.v1.phases.v1.execution_stages)
-            ) as _tx_envelopes_raw,
-
-            _lcm.tx_processing as _tx_result_metas_raw
-
-        from galexie
-)
-
-{{end}}
-
 {{define "create_range"}}
 
 create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
     with
-        tx_envelopes as (
+        galexie as (
+            select
+                ledger
+            from executable(
+                'ch-stellar table-function galexie-normalized',
+                ArrowStream,
+                'ledger String',
+                (
+                    select
+                        '{{ .GALEXIE_URL }}' as url,
+                        {{.RANGE_START}}::UInt32 as start,
+                        {{.RANGE_END}}::UInt32 as end,
+                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}'
+                ),
+                settings
+                    stderr_reaction='log',
+                    check_exit_code=true,
+                    command_read_timeout=120000
+            )
+        ),
+
+        ledgers as (
+            select
+                JSONExtract(ledger, 'Tuple(
+                    ledger_header Tuple(
+                        hash String,
+                        header Tuple(
+                            ledger_seq Int32,
+                            previous_ledger_hash String,
+                            total_coins UInt64,
+                            fee_pool UInt64,
+                            base_fee UInt64,
+                            base_reserve UInt64,
+                            max_tx_set_size UInt32,
+                            ledger_version UInt32,
+                            scp_value Tuple(
+                                close_time DateTime64(6, \'UTC\'),
+                                ext Tuple(
+                                    signed Tuple(
+                                        node_id String,
+                                        signature String
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    tx_set Array(String),
+                    tx_processing Array(String),
+                    total_byte_size_of_live_soroban_state UInt64,
+                    ext Tuple(
+                        v1 Tuple(
+                            soroban_fee_write1_kb UInt64
+                        )
+                    )
+                )') as _ledger,
+
+                _ledger.ledger_header.header.ledger_seq as ledger_sequence,
+                _ledger.ledger_header.header.scp_value.close_time as ledger_close_time,
+                _ledger.ledger_header.hash as ledger_hash,
+
+                _ledger.tx_set as _tx_envelopes_raw,
+                _ledger.tx_processing as _tx_result_metas_raw
+            from galexie
+        ),
+
+        txs as (
             select
                 columns('^[^_]'),
 
@@ -108,31 +97,20 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                     )'
                 ) _tx_envelope_inner,
 
-                stellar_hash_transaction(
-                    _tx_envelope_raw, 
-                    '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}'
-                ) as transaction_hash,
-
                 if(
-                    startsWith(_tx_envelope_inner.source_account, 'M'), 
-                    stellar_unmux(_tx_envelope_inner.source_account), 
+                    startsWith(_tx_envelope_inner.source_account, 'M'),
+                    stellar_unmux(_tx_envelope_inner.source_account),
                     _tx_envelope_inner.source_account
                 ) as transaction_source_account,
 
                 if(
-                    startsWith(_tx_envelope_inner.source_account, 'M'), 
+                    startsWith(_tx_envelope_inner.source_account, 'M'),
                     _tx_envelope_inner.source_account,
                     ''
                 ) as transaction_source_account_muxed,
 
-                _tx_envelope_inner.operations as _ops_raw
-            from ledgers_{{.RANGE_START}}_{{.RANGE_END}} 
-            array join 
-                _tx_envelopes_raw as _tx_envelope_raw
-        ),
+                _tx_envelope_inner.operations as _ops_raw,
 
-        tx_result_metas as (
-            select             
                 JSONExtract(_tx_result_meta_raw, 'Tuple(
                     result Tuple(
                         transaction_hash String,
@@ -151,34 +129,29 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 ) as _ops_results_raw,
 
                 _tx_order,
+                _tx_result_meta.result.transaction_hash as transaction_hash,
 
                 if(
-                    JSONType(_tx_result_meta.result.result.result) = 'Object', 
-                    _result.1, 
+                    JSONType(_tx_result_meta.result.result.result) = 'Object',
+                    _result.1,
                     _tx_result_meta.result.result.result
                 ) as transaction_result_code,
 
-                (transaction_result_code in ('tx_fee_bump_inner_success', 'tx_success')) as transaction_successful
-            from ledgers_{{.RANGE_START}}_{{.RANGE_END}} 
-            array join 
-                _tx_result_metas_raw as _tx_result_meta_raw,
-                arrayEnumerate(_tx_result_metas_raw) as _tx_order
-        ),
+                (transaction_result_code in ('tx_fee_bump_inner_success', 'tx_success')) as transaction_successful,
 
-        txs as (
-            select 
-                columns('^[^_]'),
                 stellar_id(ledger_sequence::Int32, _tx_order::Int32, 0::Int32) as transaction_id,
                 _ops_raw,
                 _ops_results_raw,
                 _tx_order
-            from tx_envelopes
-            left join tx_result_metas
-            on tx_envelopes.transaction_hash = tx_result_metas._tx_result_meta.result.transaction_hash
+            from ledgers
+            array join
+                _tx_envelopes_raw as _tx_envelope_raw,
+                _tx_result_metas_raw as _tx_result_meta_raw,
+                arrayEnumerate(_tx_result_metas_raw) as _tx_order
         ),
 
         ops as (
-            select 
+            select
                 columns('^[^_]'),
 
                 JSONExtractString(_op_raw, 'source_account') as _source_account,
@@ -193,20 +166,20 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 _body_inner.2 as body,
 
                 if(
-                    startsWith(_source_account, 'M'), 
-                    stellar_unmux(_source_account), 
+                    startsWith(_source_account, 'M'),
+                    stellar_unmux(_source_account),
                     _source_account
                 ) as source_account,
 
                 if(
-                    startsWith(_source_account, 'M'), 
+                    startsWith(_source_account, 'M'),
                     _source_account,
                     ''
                 ) as source_account_muxed,
 
                 if(
-                    JSONType(_op_result_raw) = 'Object', 
-                    _op_result.1, 
+                    JSONType(_op_result_raw) = 'Object',
+                    _op_result.1,
                     JSONExtractString(_op_result_raw)
                 ) as result_code,
 
@@ -218,21 +191,21 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
                 _op_result_tr_inner.2 as result_body
             from txs
-            array join 
+            array join
                 _ops_raw as _op_raw,
                 _ops_results_raw as _op_result_raw,
                 arrayEnumerate(_ops_raw) as _op_order
         )
 
     select
-        ledger_sequence,        
-        ledger_close_time,         
-        ledger_hash,    
-        transaction_hash,           
+        ledger_sequence,
+        ledger_close_time,
+        ledger_hash,
+        transaction_hash,
         transaction_id,
         transaction_result_code,
         transaction_successful,
-        id,    
+        id,
 
         firstNonDefault(
             source_account,
@@ -244,26 +217,12 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
             transaction_source_account_muxed
         ) as source_account_muxed,
 
-        type,                     
-        body,                    
-        result_code,              
-        inner_result_code,       
+        type,
+        body,
+        result_code,
+        inner_result_code,
         result_body
     from ops
 )
-
-{{end}}
-
-{{define "drop_ledgers"}}
-
-drop table ledgers_{{.RANGE_START}}_{{.RANGE_END}}
-
-{{end}}
-
-{{define "check_txs"}}
-
-select 
-    throwIf(transaction_result_code = '', 'tx_match_failed') as _
-from range_{{.RANGE_START}}_{{.RANGE_END}}
 
 {{end}}
