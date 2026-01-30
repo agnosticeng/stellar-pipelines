@@ -6,7 +6,7 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
             select
                 ledger
             from executable(
-                'ch-stellar table-function galexie-normamlized',
+                'ch-stellar table-function galexie-normalized',
                 ArrowStream,
                 'ledger String',
                 (
@@ -14,7 +14,7 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                         '{{ .GALEXIE_URL }}' as url,
                         {{.RANGE_START}}::UInt32 as start,
                         {{.RANGE_END}}::UInt32 as end,
-                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}'
+                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}' as passphrase
                 ),
                 settings
                     stderr_reaction='log',
@@ -25,52 +25,45 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
         ledgers as (
             select
-                firstNonDefault(
-                    JSONExtractString(ledger_close_meta, 'v0'),
-                    JSONExtractString(ledger_close_meta, 'v1'),
-                    JSONExtractString(ledger_close_meta, 'v2')
-                ) as _lcm_raw,
-
-                JSONExtract(_lcm_raw, ' Tuple(
+                JSONExtract(ledger, 'Tuple(
                     ledger_header Tuple(
                         hash String,
                         header Tuple(
                             ledger_seq Int32,
+                            previous_ledger_hash String,
+                            total_coins UInt64,
+                            fee_pool UInt64,
+                            base_fee UInt64,
+                            base_reserve UInt64,
+                            max_tx_set_size UInt32,
+                            ledger_version UInt32,
                             scp_value Tuple(
-                                close_time DateTime64(6, \'UTC\')
+                                close_time DateTime64(6, \'UTC\'),
+                                ext Tuple(
+                                    signed Tuple(
+                                        node_id String,
+                                        signature String
+                                    )
+                                )
                             )
                         )
                     ),
-                    tx_set Tuple(
-                        txs Array(String),
+                    tx_set Array(String),
+                    tx_processing Array(String),
+                    total_byte_size_of_live_soroban_state UInt64,
+                    ext Tuple(
                         v1 Tuple(
-                            phases Array(Tuple(
-                                v0 Array(Tuple(
-                                    txset_comp_txs_maybe_discounted_fee Tuple(
-                                        txs Array(String)
-                                    )
-                                )),
-                                v1 Tuple(
-                                    execution_stages Array(Array(Array(String)))
-                                )
-                            ))
+                            soroban_fee_write1_kb UInt64
                         )
-                    ),
-                    tx_processing Array(String)
-                )') as _lcm,
+                    )
+                )') as _ledger,
 
-                _lcm.ledger_header.header.ledger_seq as ledger_sequence,
-                _lcm.ledger_header.header.scp_value.close_time as ledger_close_time,
-                _lcm.ledger_header.hash as ledger_hash,
+                _ledger.ledger_header.header.ledger_seq as ledger_sequence,
+                _ledger.ledger_header.header.scp_value.close_time as ledger_close_time,
+                _ledger.ledger_header.hash as ledger_hash,
 
-                arrayConcat(
-                    _lcm.tx_set.txs,
-                    arrayFlatten(_lcm.tx_set.v1.phases.v0.txset_comp_txs_maybe_discounted_fee.txs),
-                    arrayFlatten(_lcm.tx_set.v1.phases.v1.execution_stages)
-                ) as _tx_envelopes_raw,
-
-                _lcm.tx_processing as _tx_result_metas_raw
-
+                _ledger.tx_set as _tx_envelopes_raw,
+                _ledger.tx_processing as _tx_result_metas_raw
             from galexie
         ),
 
@@ -291,7 +284,6 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
     select
         columns('^[^_]')
     from trades
-
 )
 
 {{end}}

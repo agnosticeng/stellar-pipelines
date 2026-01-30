@@ -1,6 +1,6 @@
-{{define "create_ledgers"}}
+{{define "create_range"}}
 
-create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
+create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
     with
         galexie as (
             select
@@ -14,7 +14,7 @@ create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                         '{{ .GALEXIE_URL }}' as url,
                         {{.RANGE_START}}::UInt32 as start,
                         {{.RANGE_END}}::UInt32 as end,
-                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}'
+                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}' as passphrase
                 ),
                 settings
                     stderr_reaction='log',
