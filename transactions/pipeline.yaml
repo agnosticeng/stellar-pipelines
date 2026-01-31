@@ -2,7 +2,7 @@ Engine:
   Local:
     Bundles:
       - https://github.com/agnosticeng/ch-iceberg/releases/download/v0.0.5/ch-iceberg_0.0.5_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
-      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.7/ch-stellar_0.0.7_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
+      - https://github.com/agnosticeng/ch-stellar/releases/download/v0.0.8/ch-stellar_0.0.8_{{ .RUST_TARGET | default "x86_64-unknown-linux-gnu" }}.tar.gz
     Logging:
       DiscardSources:
         - AwsAuthSTSAssumeRoleWebIdentityCredentialsProvider
