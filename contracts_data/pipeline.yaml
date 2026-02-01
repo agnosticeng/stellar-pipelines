@@ -31,11 +31,11 @@ Init:
 
 Source:
   Query: iceberg_table_source
-  PollInterval: { { .SOURCE_POLL_INTERVAL | default "30s" } }
+  PollInterval: '{{ .SOURCE_POLL_INTERVAL | default "30s" }}'
 
 Stages:
   - Execute:
-      PoolSize: { { .FETCH_POOL_SIZE | default "1" } }
+      PoolSize: '{{ .FETCH_POOL_SIZE | default "1" }}'
       Ordered: true
       Queries:
         - create_range
@@ -47,8 +47,8 @@ Stages:
         - insert_range_into_buffer
         - drop_range
         - merge_range_and_buffer_vars
-      MaxDuration: { { .MAX_BUFFER_DURATION | default "300s" } }
-      MaxRows: { { .MAX_BUFFER_ROWS | default "960000" } }
+      MaxDuration: '{{ .MAX_BUFFER_DURATION | default "300s" }}'
+      MaxRows: '{{ .MAX_BUFFER_ROWS | default "960000" }}'
 
   - Execute:
       PoolSize: 1
