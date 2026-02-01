@@ -9,6 +9,7 @@ Engine:
     Settings:
       send_logs_level: warning
       enable_named_columns_in_function_tuple: 1
+      enable_unaligned_array_join: 1
       schema_inference_make_columns_nullable: auto
       remote_filesystem_read_prefetch: 0
       input_format_parquet_use_native_reader: 1
