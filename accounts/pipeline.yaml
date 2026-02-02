@@ -14,6 +14,7 @@ Engine:
       input_format_parquet_use_native_reader: 1
       output_format_arrow_string_as_string: 0
       max_execution_time: 3600
+      enable_unaligned_array_join: 1
 
 Includes:
   - ../common
@@ -29,15 +30,19 @@ Init:
     - init_from_table
 
 Source:
-  Query: iceberg_table_source
+  Query: galexie_source
   PollInterval: '{{ .SOURCE_POLL_INTERVAL | default "30s" }}'
 
 Stages:
   - Execute:
-      PoolSize: '{{ .FETCH_POOL_SIZE | default "1" }}'
+      PoolSize: '{{ .FETCH_POOL_SIZE | default "4" }}'
       Ordered: true
       Queries:
+        - changes_common_create_ledgers
+        - changes_common_create_txs
         - create_range
+        - changes_common_drop_ledgers
+        - changes_common_drop_txs
 
   - Buffer:
       Enter: create_buffer_from_range
