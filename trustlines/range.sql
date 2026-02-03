@@ -2,9 +2,11 @@
 
 create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory
 as (
-    with 
+    with
+        {{template "changes" .}},
+
         liquidity_pools as (
-            select 
+            select
                 JSONExtract(ledger_entry_data, 'Tuple(
                     account_id String,
                     asset String,
@@ -58,18 +60,15 @@ as (
                 _trustline_entry.ext.v1.liabilities.buying as buying_liabilities,
                 _trustline_entry.ext.v1.liabilities.selling as selling_liabilities,
                 _trustline_entry.ext.v1.ext.v2.liquidity_pool_use_count as liquidity_pool_use_count
-            from iceberg('{{ .ICEBERG_CHANGES_URL_CLICKHOUSE }}', NOSIGN, settings iceberg_use_version_hint=1) as changes
+            from changes
             where ledger_sequence >= {{.RANGE_START}}
             AND ledger_sequence <= {{.RANGE_END}}
             and ledger_entry_type = 'trustline'
         )
 
-        select 
+        select
             columns('^[^_]')
         from liquidity_pools
 )
 
 {{end}}
-
-
-https://stellar-iceberg-testnet.agnostic.tech/changes'

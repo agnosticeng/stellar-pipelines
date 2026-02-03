@@ -2,9 +2,11 @@
 
 create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory
 as (
-    with 
+    with
+        {{template "changes" .}},
+
         liquidity_pools as (
-            select 
+            select
                 JSONExtract(ledger_entry_data, 'Tuple(
                     liquidity_pool_id String,
                     body String
@@ -68,13 +70,13 @@ as (
                 JSONExtractString(_asset_b_type_and_data.2, 'asset_code') as asset_b_code,
                 JSONExtractString(_asset_b_type_and_data.2, 'issuer') as asset_b_issuer,
                 stellar_asset_id(asset_b_code, asset_b_issuer, asset_b_type) as asset_b_id
-            from iceberg('{{ .ICEBERG_CHANGES_URL_CLICKHOUSE }}', NOSIGN, settings iceberg_use_version_hint=1) as changes
+            from changes
             where ledger_sequence >= {{.RANGE_START}}
             AND ledger_sequence <= {{.RANGE_END}}
             and ledger_entry_type = 'liquidity_pool'
         )
 
-        select 
+        select
             columns('^[^_]')
         from liquidity_pools
 )

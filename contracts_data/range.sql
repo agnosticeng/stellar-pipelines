@@ -2,9 +2,11 @@
 
 create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory
 as (
-    with 
+    with
+        {{template "changes" .}},
+
         contracts_data as (
-            select 
+            select
                 JSONExtract(ledger_entry_data, 'Tuple(
                     contract String,
                     durability String,
@@ -29,13 +31,13 @@ as (
                 _contract_data_entry.durability as durability,
                 _contract_data_entry.key as key,
                 _contract_data_entry.val as value
-            from iceberg('{{ .ICEBERG_CHANGES_URL_CLICKHOUSE }}', NOSIGN, settings iceberg_use_version_hint=1) as changes
+            from changes
             where ledger_sequence >= {{.RANGE_START}}
             AND ledger_sequence <= {{.RANGE_END}}
             and ledger_entry_type = 'contract_data'
         )
 
-    select 
+    select
         columns('^[^_]')
     from contracts_data
 )
