@@ -21,40 +21,51 @@ create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                     check_exit_code=true,
                     command_read_timeout=120000
             )
+        ),
+
+        ledgers as (
+            select
+                JSONExtract(ledger, 'Tuple(
+                    ledger_header Tuple(
+                        hash String,
+                        header Tuple(
+                            ledger_seq Int32,
+                            scp_value Tuple(
+                                close_time DateTime64(6, \'UTC\')
+                            )
+                        )
+                    ),
+                    tx_set Array(String),
+                    tx_processing Array(String),
+                    upgrades_processing Array(Tuple(
+                        changes Array(String)
+                    ))
+                )') as _ledger,
+
+                _ledger.ledger_header.header.ledger_seq as ledger_sequence,
+                _ledger.ledger_header.header.scp_value.close_time as ledger_close_time,
+                _ledger.ledger_header.hash as ledger_hash,
+
+                _ledger.tx_set as _tx_envelopes_raw,
+                _ledger.tx_processing as _tx_result_metas_raw,
+
+                arrayFlatten(
+                    arrayMap(
+                        x -> x.changes,
+                        _ledger.upgrades_processing
+                    )
+                ) as _upgrade_processing_changes_raw
+            from galexie
         )
 
     select
-        JSONExtract(ledger, 'Tuple(
-            ledger_header Tuple(
-                hash String,
-                header Tuple(
-                    ledger_seq Int32,
-                    scp_value Tuple(
-                        close_time DateTime64(6, \'UTC\')
-                    )
-                )
-            ),
-            tx_set Array(String),
-            tx_processing Array(String),
-            upgrades_processing Array(Tuple(
-                changes Array(String)
-            ))
-        )') as _ledger,
-
-        _ledger.ledger_header.header.ledger_seq as ledger_sequence,
-        _ledger.ledger_header.header.scp_value.close_time as ledger_close_time,
-        _ledger.ledger_header.hash as ledger_hash,
-
-        _ledger.tx_set as _tx_envelopes_raw,
-        _ledger.tx_processing as _tx_result_metas_raw,
-
-        arrayFlatten(
-            arrayMap(
-                x -> x.changes,
-                _ledger.upgrades_processing
-            )
-        ) as _upgrade_processing_changes_raw
-    from galexie
+        ledger_sequence,
+        ledger_close_time,
+        ledger_hash,
+        _tx_envelopes_raw,
+        _tx_result_metas_raw,
+        _upgrade_processing_changes_raw
+    from ledgers
 )
 
 {{end}}
@@ -62,103 +73,118 @@ create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 {{define "changes_common_create_txs"}}
 
 create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
-    select
-        columns('^[^_]'),
+    with txs as (
+        select
+            columns('^[^_]'),
 
-        JSONExtract(_tx_envelope_raw, 'Tuple(
-            tx Tuple(
-                tx String
-            ),
-            tx_fee_bump Tuple(
+            JSONExtract(_tx_envelope_raw, 'Tuple(
                 tx Tuple(
-                    inner_tx Tuple(
-                        tx Tuple(
-                            tx String
+                    tx String
+                ),
+                tx_fee_bump Tuple(
+                    tx Tuple(
+                        inner_tx Tuple(
+                            tx Tuple(
+                                tx String
+                            )
                         )
                     )
                 )
-            )
-        )') as _tx_envelope,
+            )') as _tx_envelope,
 
-        JSONExtract(
-            firstNonDefault(
-                _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx,
-                _tx_envelope.tx.tx
-            ),
-            'Tuple(
-                operations Array(String)
-            )'
-        ) _tx_envelope_inner,
+            JSONExtract(
+                firstNonDefault(
+                    _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx,
+                    _tx_envelope.tx.tx
+                ),
+                'Tuple(
+                    operations Array(String)
+                )'
+            ) _tx_envelope_inner,
 
-        _tx_envelope_inner.operations as _ops_raw,
+            _tx_envelope_inner.operations as _ops_raw,
 
-        JSONExtract(_tx_result_meta_raw, 'Tuple(
-            result Tuple(
-                transaction_hash String,
+            JSONExtract(_tx_result_meta_raw, 'Tuple(
                 result Tuple(
-                    result String,
-                )
-            ),
-            tx_apply_processing Tuple(
-                operations Array(String),
-                v1 String,
-                v2 String,
-                v3 String,
-                v4 String
-            ),
-            fee_processing Array(String),
-            post_tx_apply_fee_processing Array(String)
-        )') as _tx_result_meta,
+                    transaction_hash String,
+                    result Tuple(
+                        result String,
+                    )
+                ),
+                tx_apply_processing Tuple(
+                    operations Array(String),
+                    v1 String,
+                    v2 String,
+                    v3 String,
+                    v4 String
+                ),
+                fee_processing Array(String),
+                post_tx_apply_fee_processing Array(String)
+            )') as _tx_result_meta,
 
-        JSONExtractKeysAndValues(_tx_result_meta.result.result.result, 'String')[1] as _result,
+            JSONExtractKeysAndValues(_tx_result_meta.result.result.result, 'String')[1] as _result,
 
-        firstNonDefault(
-            JSONExtractArrayRaw(_result.2),
-            JSONExtractArrayRaw(_result.2, 'result', 'result', 'tx_success'),
-            JSONExtractArrayRaw(_result.2, 'result', 'result', 'tx_failed')
-        ) as _ops_results_raw,
+            firstNonDefault(
+                JSONExtractArrayRaw(_result.2),
+                JSONExtractArrayRaw(_result.2, 'result', 'result', 'tx_success'),
+                JSONExtractArrayRaw(_result.2, 'result', 'result', 'tx_failed')
+            ) as _ops_results_raw,
 
-        firstNonDefault(
-            _tx_result_meta.tx_apply_processing.v1,
-            _tx_result_meta.tx_apply_processing.v2,
-            _tx_result_meta.tx_apply_processing.v3,
-            _tx_result_meta.tx_apply_processing.v4
-        ) as _tx_meta_raw,
+            firstNonDefault(
+                _tx_result_meta.tx_apply_processing.v1,
+                _tx_result_meta.tx_apply_processing.v2,
+                _tx_result_meta.tx_apply_processing.v3,
+                _tx_result_meta.tx_apply_processing.v4
+            ) as _tx_meta_raw,
 
-        JSONExtract(_tx_meta_raw, 'Tuple(
-            tx_changes Array(String),
-            tx_changes_before Array(String),
-            tx_changes_after Array(String),
-            operations Array(String)
-        )') as _tx_meta,
+            JSONExtract(_tx_meta_raw, 'Tuple(
+                tx_changes Array(String),
+                tx_changes_before Array(String),
+                tx_changes_after Array(String),
+                operations Array(String)
+            )') as _tx_meta,
 
-        firstNonDefault(
-            _tx_result_meta.tx_apply_processing.operations,
-            _tx_meta.operations
-        ) as _ops_metas_raw,
+            firstNonDefault(
+                _tx_result_meta.tx_apply_processing.operations,
+                _tx_meta.operations
+            ) as _ops_metas_raw,
 
-        _tx_result_meta.fee_processing as _fee_processing_changes_raw,
-        _tx_result_meta.post_tx_apply_fee_processing as _post_tx_apply_fee_processing_raw,
-        _tx_meta.tx_changes as _tx_changes_raw,
-        _tx_meta.tx_changes_before as _tx_changes_before_raw,
-        _tx_meta.tx_changes_after as _tx_changes_after_raw,
-        _tx_order,
+            _tx_result_meta.fee_processing as _fee_processing_changes_raw,
+            _tx_result_meta.post_tx_apply_fee_processing as _post_tx_apply_fee_processing_raw,
+            _tx_meta.tx_changes as _tx_changes_raw,
+            _tx_meta.tx_changes_before as _tx_changes_before_raw,
+            _tx_meta.tx_changes_after as _tx_changes_after_raw,
+            _tx_order,
 
-        _tx_result_meta.result.transaction_hash as transaction_hash,
+            _tx_result_meta.result.transaction_hash as transaction_hash,
 
-        if(
-            JSONType(_tx_result_meta.result.result.result) = 'Object',
-            _result.1,
-            _tx_result_meta.result.result.result
-        ) as transaction_result_code,
+            if(
+                JSONType(_tx_result_meta.result.result.result) = 'Object',
+                _result.1,
+                _tx_result_meta.result.result.result
+            ) as transaction_result_code,
 
-        (transaction_result_code in ('tx_fee_bump_inner_success', 'tx_success')) as transaction_successful,
-        stellar_id(ledger_sequence::Int32, _tx_order::Int32, 0::Int32) as transaction_id
-    from ledgers_{{.RANGE_START}}_{{.RANGE_END}}
-    array join
-        _tx_envelopes_raw as _tx_envelope_raw,
-        _tx_result_metas_raw as _tx_result_meta_raw,
-        arrayEnumerate(_tx_result_metas_raw) as _tx_order
+            (transaction_result_code in ('tx_fee_bump_inner_success', 'tx_success')) as transaction_successful,
+            stellar_id(ledger_sequence::Int32, _tx_order::Int32, 0::Int32) as transaction_id
+        from ledgers_{{.RANGE_START}}_{{.RANGE_END}}
+        array join
+            _tx_envelopes_raw as _tx_envelope_raw,
+            _tx_result_metas_raw as _tx_result_meta_raw,
+            arrayEnumerate(_tx_result_metas_raw) as _tx_order
+    )
+
+    select
+        * except (
+            _tx_envelope_raw,
+            _tx_result_meta_raw,
+            _tx_envelope,
+            _tx_envelope_inner,
+            _tx_result_meta,
+            _result,
+            _tx_meta_raw,
+            _tx_meta
+        )
+    from txs
 )
 
 {{end}}
