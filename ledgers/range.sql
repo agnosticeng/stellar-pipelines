@@ -7,15 +7,14 @@ as (
             select
                 ledger
             from executable(
-                'ch-stellar table-function galexie-normalized',
+                'ch-stellar table-function galexie --normalized',
                 ArrowStream,
                 'ledger String',
                 (
                     select
                         '{{ .GALEXIE_URL }}' as url,
                         {{.RANGE_START}}::UInt32 as start,
-                        {{.RANGE_END}}::UInt32 as end,
-                        '{{ .NETWORK_PASSPHRASE | default "Public Global Stellar Network ; September 2015" }}' as passphrase
+                        {{.RANGE_END}}::UInt32 as end
                 ),
                 settings
                     stderr_reaction='log',
