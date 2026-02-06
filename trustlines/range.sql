@@ -1,6 +1,6 @@
 {{define "create_range"}}
 
-create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory
+create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=StripeLog
 as (
     with
         {{template "changes" .}},

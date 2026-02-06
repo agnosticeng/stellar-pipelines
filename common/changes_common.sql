@@ -1,12 +1,12 @@
 {{define "changes_common_create_ledgers"}}
 
-create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
+create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=StripeLog as (
     with
         galexie as (
             select
                 ledger
             from executable(
-                'ch-stellar table-function galexie-normalized',
+                'ch-stellar table-function galexie-normalized --output-block-size=8',
                 ArrowStream,
                 'ledger String',
                 (
@@ -72,7 +72,7 @@ create table ledgers_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
 {{define "changes_common_create_txs"}}
 
-create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
+create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=StripeLog as (
     with txs as (
         select
             columns('^[^_]'),
