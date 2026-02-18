@@ -71,17 +71,14 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 columns('^[^_]'),
 
                 JSONExtract(_tx_envelope_raw, 'Tuple(
-                    tx Tuple(
-                        tx String
-                    ),
+                    tx_v0 Tuple(tx String),
+                    tx Tuple(tx String),
                     tx_fee_bump Tuple(
                         tx Tuple(
                             fee_source String,
                             fee Int64,
                             inner_tx Tuple(
-                                tx Tuple(
-                                    tx String
-                                )
+                                tx Tuple(tx String)
                             )
                         )
                     )
@@ -89,13 +86,19 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
                 JSONExtract(
                     firstNonDefault(
-                        _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx,
-                        _tx_envelope.tx.tx
+                        _tx_envelope.tx_v0.tx,
+                        _tx_envelope.tx.tx,
+                        _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx
                     ),
                     'Tuple(
+                        source_account_ed25519 String,
                         source_account String,
                         fee Int64,
                         seq_num Int64,
+                        time_bounds Tuple(
+                            min_time Nullable(DateTime64(6, \'UTC\')),
+                            max_time Nullable(DateTime64(6, \'UTC\'))
+                        ),
                         cond Tuple(
                             time_bounds Tuple(
                                 min_time Nullable(DateTime64(6, \'UTC\')),
@@ -186,7 +189,12 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 _tx_meta.soroban_meta.ext.v1.total_refundable_resource_fee_charged as total_refundable_resource_fee_charged,
                 _tx_meta.soroban_meta.ext.v1.rent_fee_charged as rent_fee_charged,
 
-                _tx_envelope_inner.source_account as source_account,
+                multiIf(
+                    length(_tx_envelope_inner.source_account) > 0, _tx_envelope_inner.source_account,
+                    length(_tx_envelope_inner.source_account_ed25519) > 0, stellar_uint256_to_account(_tx_envelope_inner.source_account_ed25519),
+                    ''
+                ) as source_account,
+
                 _tx_envelope_inner.seq_num as account_sequence,
                 length(_tx_envelope_inner.operations) as operation_count,
 
@@ -231,11 +239,13 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 ) as memo,
 
                 firstNonDefault(
+                    _tx_envelope_inner.time_bounds.min_time,
                     _tx_envelope_inner.cond.time_bounds.min_time,
                     _tx_envelope_inner.cond.v2.time_bounds.min_time
                 ) as min_time_bound,
 
                 firstNonDefault(
+                    _tx_envelope_inner.time_bounds.max_time,
                     _tx_envelope_inner.cond.time_bounds.max_time,
                     _tx_envelope_inner.cond.v2.time_bounds.max_time
                 ) as max_time_bound,

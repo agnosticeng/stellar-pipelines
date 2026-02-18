@@ -21,7 +21,6 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                     command_read_timeout=120000
             )
         ),
-
         ledgers as (
             select
                 JSONExtract(ledger, 'Tuple(
@@ -71,15 +70,12 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 columns('^[^_]'),
 
                 JSONExtract(_tx_envelope_raw, 'Tuple(
-                    tx Tuple(
-                        tx String
-                    ),
+                    tx_v0 Tuple(tx String),
+                    tx Tuple(tx String),
                     tx_fee_bump Tuple(
                         tx Tuple(
                             inner_tx Tuple(
-                                tx Tuple(
-                                    tx String
-                                )
+                                tx Tuple(tx String)
                             )
                         )
                     )
@@ -87,24 +83,32 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
                 JSONExtract(
                     firstNonDefault(
-                        _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx,
-                        _tx_envelope.tx.tx
+                        _tx_envelope.tx_v0.tx,
+                        _tx_envelope.tx.tx,
+                        _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx
                     ),
                     'Tuple(
+                        source_account_ed25519 String,
                         source_account String,
                         operations Array(String)
                     )'
                 ) _tx_envelope_inner,
 
+                multiIf(
+                    length(_tx_envelope_inner.source_account) > 0, _tx_envelope_inner.source_account,
+                    length(_tx_envelope_inner.source_account_ed25519) > 0, stellar_uint256_to_account(_tx_envelope_inner.source_account_ed25519),
+                    ''
+                ) as _transaction_source_account,
+
                 if(
-                    startsWith(_tx_envelope_inner.source_account, 'M'),
-                    stellar_unmux(_tx_envelope_inner.source_account),
-                    _tx_envelope_inner.source_account
+                    startsWith(_transaction_source_account, 'M'),
+                    stellar_unmux(_transaction_source_account),
+                    _transaction_source_account
                 ) as transaction_source_account,
 
                 if(
-                    startsWith(_tx_envelope_inner.source_account, 'M'),
-                    _tx_envelope_inner.source_account,
+                    startsWith(_transaction_source_account, 'M'),
+                    _transaction_source_account,
                     ''
                 ) as transaction_source_account_muxed,
 
@@ -161,6 +165,7 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
                 JSONExtractKeysAndValues(_op_result_tr.2, 'String')[1] as _op_result_tr_inner,
 
                 stellar_id(ledger_sequence::Int32, _tx_order::Int32, _op_order::Int32) as id,
+
                 _body_inner.1 as type,
                 _body_inner.2 as body,
 
@@ -211,9 +216,10 @@ create table range_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
             transaction_source_account
         ) as source_account,
 
-        firstNonDefault(
-            source_account_muxed,
-            transaction_source_account_muxed
+        multiIf(
+            source_account <> '', source_account_muxed,
+            transaction_source_account <> '', transaction_source_account_muxed,
+            ''
         ) as source_account_muxed,
 
         type,

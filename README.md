@@ -29,3 +29,34 @@ agt run \
     --var="RPC_URL=https://stellar-soroban-testnet-public.nodies.app" \
     ../stellar-pipelines/ledgers/pipeline.yaml
 ```
+
+## Querying
+
+### DuckDB
+
+Inside the DuckDB CLI, you can query the data using SQL.
+
+```sql
+create or replace secret (
+    type s3, 
+    region 'auto', endpoint 'agnostic.tech'
+);
+
+select
+    * 
+from iceberg_scan('s3://agnostic-stellar-iceberg-mainnet/operations') 
+limit 10;
+```
+
+### ClickHouse
+
+Inside the ClickHouse CLI, you can query the data using SQL.
+
+```sql
+select
+    * 
+from iceberg('https://agnostic-stellar-iceberg-mainnet.agnostic.tech/operations', nosign, settings iceberg_use_version_hint=1) 
+limit 10
+settings 
+    
+```

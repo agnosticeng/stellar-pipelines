@@ -113,7 +113,10 @@ as (
                 arraySum(x -> length(x), _successful_tx_operations) as operation_count,
 
                 arraySum(
-                    x -> JSONLength(x, 'tx', 'tx', 'operations') + JSONLength(x, 'tx', 'tx_fee_bump', 'inner_tx', 'tx', 'tx', 'operations'),
+                    x ->
+                        JSONLength(x, 'tx_v0', 'tx', 'operations') +
+                        JSONLength(x, 'tx', 'tx', 'operations') +
+                        JSONLength(x, 'tx', 'tx_fee_bump', 'inner_tx', 'tx', 'tx', 'operations') ,
                     _tx_envelopes_raw
                 ) as tx_set_operation_count
             from galexie
