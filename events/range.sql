@@ -51,15 +51,12 @@ create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
         columns('^[^_]'),
 
         JSONExtract(_tx_envelope_raw, 'Tuple(
-            tx Tuple(
-                tx String
-            ),
+            tx_v0 Tuple(tx String),
+            tx Tuple(tx String),
             tx_fee_bump Tuple(
                 tx Tuple(
                     inner_tx Tuple(
-                        tx Tuple(
-                            tx String
-                        )
+                        tx Tuple(tx String)
                     )
                 )
             )
@@ -67,12 +64,11 @@ create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
 
         JSONExtract(
             firstNonDefault(
-                _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx,
-                _tx_envelope.tx.tx
+                _tx_envelope.tx_v0.tx,
+                _tx_envelope.tx.tx,
+                _tx_envelope.tx_fee_bump.tx.inner_tx.tx.tx
             ),
-            'Tuple(
-                operations Array(String)
-            )'
+            'Tuple(operations Array(String))'
         ) _tx_envelope_inner,
 
         _tx_envelope_inner.operations as _ops_raw,
@@ -80,9 +76,7 @@ create table txs_{{.RANGE_START}}_{{.RANGE_END}} engine=Memory as (
         JSONExtract(_tx_result_meta_raw, 'Tuple(
             result Tuple(
                 transaction_hash String,
-                result Tuple(
-                    result String,
-                )
+                result Tuple(result String)
             ),
             tx_apply_processing String
         )') as _tx_result_meta,
